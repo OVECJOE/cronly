@@ -3,8 +3,6 @@ import { Fraunces, JetBrains_Mono, DM_Sans } from "next/font/google";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import "./globals.css";
 
-// next/font downloads and self-hosts these at build time — zero CDN round-trips,
-// works fully offline after first build, and eliminates the CLS from font swaps.
 const fraunces = Fraunces({
   subsets: ["latin"],
   style: ["normal", "italic"],
