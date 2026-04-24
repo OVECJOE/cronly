@@ -12,7 +12,8 @@
  * without modification.
  */
 
-import { parseCronFromText } from "./nlpParser";
+import { parseCronFromText, NlpResult } from "./nlpParser";
+export type { NlpResult };
 
 // ─── Public types (re-exported for consumers) ─────────────────────────────────
 
@@ -90,8 +91,9 @@ export class ModelManager {
   /**
    * Translate natural language to a cron expression.
    * Runs the NLP parser synchronously but returns a Promise for API compat.
+   * Returns NlpResult { expr, warnings } so callers can surface caveats.
    */
-  translate(text: string, _timeoutMs = 8000): Promise<string> {
+  translate(text: string): Promise<NlpResult> {
     try {
       const result = parseCronFromText(text.trim());
       return Promise.resolve(result);

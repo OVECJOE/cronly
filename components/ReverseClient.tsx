@@ -5,7 +5,7 @@ import { CronDisplay } from "./CronDisplay";
 import { CalendarPreview } from "./CalendarPreview";
 import { NextRuns } from "./NextRuns";
 import { OutputFormats } from "./OutputFormats";
-import { cronToEnglish, validateCron } from "@/lib/cronEngine";
+import { cronToEnglish, validateCron, isQuartzSixField } from "@/lib/cronEngine";
 import { detectConflicts } from "@/lib/cronEngine";
 import { saveExpression } from "@/lib/storage";
 
@@ -16,21 +16,40 @@ export function ReverseClient() {
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState<"runs"|"calendar"|"output"|"conflict">("runs");
 
-  const { valid, errors } = input.trim() ? validateCron(input.trim()) : { valid: false, errors: [] };
-  const description = valid ? cronToEnglish(input.trim()) : "";
+  const rawInput = input.trim();
+
+  // Auto-detect and strip Quartz 6-field seconds prefix
+  const isQuartz = rawInput ? isQuartzSixField(rawInput) : false;
+  const normalised = isQuartz ? rawInput.split(/\s+/).slice(1).join(" ") : rawInput;
+
+  const { valid, errors, expanded } = normalised
+    ? validateCron(normalised)
+    : { valid: false, errors: [], expanded: undefined };
+
+  // Use the expanded 5-field form (e.g. "@daily" → "0 0 * * *") for all downstream logic
+  const resolvedExpr = expanded ?? normalised;
+  const description  = valid ? cronToEnglish(resolvedExpr) : "";
+
+  const displayExpr = valid ? resolvedExpr : rawInput;
 
   const handleSave = () => {
     if (!valid) return;
-    saveExpression(input.trim(), description);
+    saveExpression(displayExpr, description);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
   const checkConflict = () => {
     if (!valid || !conflict.trim()) return;
-    const { valid: v2 } = validateCron(conflict.trim());
+    const conflictInput = isQuartzSixField(conflict.trim())
+      ? conflict.trim().split(/\s+/).slice(1).join(" ")
+      : conflict.trim();
+    const { valid: v2 } = validateCron(conflictInput);
     if (!v2) { setConflictResult("Second expression is invalid."); return; }
-    const overlaps = detectConflicts(input.trim(), conflict.trim());
+    const conflictInputFinal = isQuartzSixField(conflict.trim())
+      ? conflict.trim().split(/\s+/).slice(1).join(" ")
+      : conflict.trim();
+    const overlaps = detectConflicts(displayExpr, conflictInputFinal);
     if (overlaps.length === 0) setConflictResult("No conflicts in the next 24 hours.");
     else setConflictResult(`${overlaps.length} overlap${overlaps.length !== 1 ? "s" : ""} found in the next 24 hours.`);
   };
@@ -61,19 +80,39 @@ export function ReverseClient() {
 
         {/* Input */}
         <div style={{ marginBottom:"1.5rem" }}>
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            placeholder="0 9 * * 1-5"
-            spellCheck={false}
-            style={{
-              width:"100%", padding:"16px 20px",
-              background:"var(--bg2)", border:`1.5px solid ${errors.length && input ? "var(--red)" : "var(--border2)"}`,
-              borderRadius:"12px", color:"var(--amber)", fontFamily:"var(--mono)",
-              fontSize:"18px", fontWeight:500, outline:"none", letterSpacing:"0.06em",
-              transition:"border-color 0.2s"
-            }}
-          />
+          <div style={{ position:"relative" }}>
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              placeholder="0 9 * * 1-5"
+              spellCheck={false}
+              style={{
+                width:"100%", padding:"16px 20px",
+                background:"var(--bg2)", border:`1.5px solid ${errors.length && input ? "var(--red)" : "var(--border2)"}`,
+                borderRadius:"12px", color:"var(--amber)", fontFamily:"var(--mono)",
+                fontSize:"18px", fontWeight:500, outline:"none", letterSpacing:"0.06em",
+                transition:"border-color 0.2s"
+              }}
+            />
+            {input && (
+              <button onClick={() => setInput("")} style={{
+                position:"absolute", right:"14px", top:"50%", transform:"translateY(-50%)",
+                background:"none", border:"none", color:"var(--text3)", cursor:"pointer",
+                fontSize:"18px", lineHeight:1, padding:"2px"
+              }}>×</button>
+            )}
+          </div>
+          {/* Quartz detection badge */}
+          {isQuartz && (
+            <div style={{
+              marginTop:"8px", padding:"8px 12px", borderRadius:"8px",
+              background:"rgba(139,92,246,0.08)", border:"1px solid rgba(139,92,246,0.25)",
+              fontSize:"12px", fontFamily:"var(--sans)", color:"var(--text2)", lineHeight:1.5
+            }}>
+              <span style={{ color:"#a78bfa", marginRight:"6px" }}>◆</span>
+              Quartz 6-field cron detected — seconds field stripped, showing equivalent 5-field standard cron.
+            </div>
+          )}
           {errors.length > 0 && input && (
             <div style={{ marginTop:"8px" }}>
               {errors.map((e, i) => (
@@ -87,7 +126,11 @@ export function ReverseClient() {
 
         {/* Common examples */}
         <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginBottom:"2rem" }}>
-          {["0 9 * * 1-5", "*/15 * * * *", "0 0 1 * *", "0 12 * * 0", "0 */2 * * *"].map(ex => (
+          {[
+            "0 9 * * 1-5", "*/15 * * * *", "0 0 1 * *", "0 12 * * 0",
+            "0 */2 * * *", "@daily", "@hourly",
+            "0 0 9 * * 1-5",
+          ].map(ex => (
             <button key={ex} onClick={() => setInput(ex)} style={{
               padding:"5px 12px", borderRadius:"20px", fontSize:"11px",
               fontFamily:"var(--mono)", cursor:"pointer", border:"1px solid var(--border)",
@@ -105,7 +148,7 @@ export function ReverseClient() {
               background:"var(--bg2)", border:"1px solid var(--border2)",
               borderRadius:"16px", padding:"2rem", marginBottom:"1.5rem"
             }}>
-              <CronDisplay expr={input.trim()} animated />
+              <CronDisplay expr={displayExpr} animated />
               <p style={{
                 fontFamily:"var(--display)", fontStyle:"italic", fontSize:"1.2rem",
                 color:"var(--text2)", marginTop:"1.25rem", marginBottom:"1rem"
@@ -138,9 +181,9 @@ export function ReverseClient() {
             </div>
 
             <div className="fade-up">
-              {activeTab === "runs" && <NextRuns expr={input.trim()} />}
-              {activeTab === "calendar" && <CalendarPreview expr={input.trim()} />}
-              {activeTab === "output" && <OutputFormats expr={input.trim()} />}
+              {activeTab === "runs" && <NextRuns expr={displayExpr} />}
+              {activeTab === "calendar" && <CalendarPreview expr={displayExpr} />}
+              {activeTab === "output" && <OutputFormats expr={displayExpr} />}
               {activeTab === "conflict" && (
                 <div>
                   <p style={{ fontSize:"13px", color:"var(--text2)", fontFamily:"var(--sans)", marginBottom:"10px" }}>

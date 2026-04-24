@@ -15,9 +15,9 @@
   --text: #f0ede6;
   --text2: #9a9690;
   --text3: #5a5750;
-  --mono: "JetBrains Mono", monospace;
-  --display: "Fraunces", serif;
-  --sans: "DM Sans", sans-serif;
+  --mono: var(--font-jetbrains), "JetBrains Mono", monospace;
+  --display: var(--font-fraunces), "Fraunces", serif;
+  --sans: var(--font-dm-sans), "DM Sans", sans-serif;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

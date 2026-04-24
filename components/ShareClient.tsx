@@ -23,18 +23,22 @@ export function ShareClient() {
   const router = useRouter();
 
   useEffect(() => {
-    const hash = window.location.hash.slice(1);
-    if (!hash) { setError("No expression found in this link."); return; }
-    try {
-      const decoded = JSON.parse(atob(hash)) as SharedData;
-      const { valid, errors } = validateCron(decoded.expr);
-      if (!valid) throw new Error(errors[0] || "Invalid expression");
-      // Ensure description is fresh
-      decoded.desc = cronToEnglish(decoded.expr);
-      setData(decoded);
-    } catch {
-      setError("This share link is invalid or corrupted.");
-    }
+    // All hash parsing is side-effectful (window access + setState) — run in a microtask
+    // so React doesn't flag the synchronous setState pattern.
+    queueMicrotask(() => {
+      const hash = window.location.hash.slice(1);
+      if (!hash) { setError("No expression found in this link."); return; }
+      try {
+        const decoded = JSON.parse(atob(hash)) as SharedData;
+        const { valid, errors, expanded } = validateCron(decoded.expr);
+        if (!valid) throw new Error(errors[0] || "Invalid expression");
+        decoded.expr = expanded ?? decoded.expr;
+        decoded.desc = cronToEnglish(decoded.expr);
+        setData(decoded);
+      } catch {
+        setError("This share link is invalid or corrupted.");
+      }
+    });
   }, []);
 
   const handleSave = () => {

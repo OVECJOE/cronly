@@ -7,11 +7,11 @@
  */
 
 import { ModelManager } from "./ai/modelManager";
-import { validateCronStrict, normaliseCronOutput } from "./ai/constrainedDecoder";
+import { validateCronStrict, normaliseCronOutput, isQuartzSixField } from "./ai/constrainedDecoder";
 
 // ─── Re-export types consumers need ──────────────────────────────────────────
 export type { ModelPhase, ModelProgress, ProgressCallback } from "./ai/modelManager";
-export { validateCronStrict as validateCron };
+export { validateCronStrict as validateCron, isQuartzSixField };
 
 // ─── Public result type ───────────────────────────────────────────────────────
 
@@ -21,6 +21,7 @@ export interface CronResult {
   description: string;
   valid:       boolean;
   errors:      string[];
+  warnings:    string[];   // caveats from NLP parser (e.g. Quartz-only patterns)
 }
 
 export interface CronParts {
@@ -48,19 +49,20 @@ export async function translateToCron(input: string): Promise<CronResult> {
     await manager.init();
   }
 
-  const rawOutput = await manager.translate(input.trim());
+  const { expr: rawExpr, warnings } = await manager.translate(input.trim());
 
   // Normalise and validate
-  const expr = normaliseCronOutput(rawOutput) ?? rawOutput.trim();
-  const { valid, errors } = validateCronStrict(expr);
-  const parts = parseParts(expr);
+  const expr = normaliseCronOutput(rawExpr) ?? rawExpr.trim();
+  const { valid, errors, expanded } = validateCronStrict(expr);
+  const parts = parseParts(expanded ?? expr);
 
   return {
-    expr,
+    expr: expanded ?? expr,
     parts,
     description: valid ? buildDescription(parts) : "",
     valid,
     errors,
+    warnings,
   };
 }
 
@@ -282,7 +284,7 @@ export function getNextRuns(expr: string, count = 7): Date[] {
 
   const [m, h, dom, mo, dow] = expr.trim().split(/\s+/);
 
-  const matches = (field: string, value: number, min: number, max: number): boolean => {
+  const matches = (field: string, value: number): boolean => {
     if (field === "*" || field === "?") return true;
     if (field === "L") return true;
     if (field.startsWith("*/")) {
@@ -306,11 +308,11 @@ export function getNextRuns(expr: string, count = 7): Date[] {
 
   for (let tries = 0; tries < 525_600 && runs.length < count; tries++) {
     if (
-      matches(m,   d.getMinutes(),    0,  59) &&
-      matches(h,   d.getHours(),      0,  23) &&
-      matches(dom, d.getDate(),       1,  31) &&
-      matches(mo,  d.getMonth() + 1,  1,  12) &&
-      matches(dow, d.getDay(),        0,   7)
+      matches(m,   d.getMinutes()) &&
+      matches(h,   d.getHours()) &&
+      matches(dom, d.getDate()) &&
+      matches(mo,  d.getMonth() + 1) &&
+      matches(dow, d.getDay())
     ) {
       runs.push(new Date(d));
     }

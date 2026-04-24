@@ -13,7 +13,7 @@ function relTime(date: Date): string {
   return `in ${days}d`;
 }
 
-export function NextRuns({ expr, tz = "local" }: Props) {
+export function NextRuns({ expr }: Props) {
   const runs = getNextRuns(expr, 7);
   if (!runs.length) return null;
 

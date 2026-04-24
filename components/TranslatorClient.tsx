@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { Navbar } from "./Navbar";
 import { CronDisplay } from "./CronDisplay";
 import { CalendarPreview } from "./CalendarPreview";
@@ -8,6 +7,23 @@ import { NextRuns } from "./NextRuns";
 import { OutputFormats } from "./OutputFormats";
 import { ModelStatus } from "./ModelStatus";
 import { translateToCron, CronResult, EXAMPLE_SCHEDULES } from "@/lib/cronEngine";
+
+const EXTENDED_EXAMPLES = [
+  ...EXAMPLE_SCHEDULES,
+  "every morning on weekdays",
+  "every two hours",
+  "twice a week",
+  "thrice a day",
+  "first Monday of the month",
+  "every other day at noon",
+  "@daily",
+  "@hourly",
+  "nightly",
+  "every business day at 8am",
+  "half past nine every morning",
+  "quarterly at midnight",
+  "every thirty minutes on weekdays",
+];
 import { ModelManager, ModelProgress, ModelPhase } from "@/lib/ai/modelManager";
 import { saveExpression } from "@/lib/storage";
 
@@ -23,7 +39,6 @@ export function TranslatorClient() {
   const [error, setError]           = useState("");
   const debounce                    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef                    = useRef<AbortController | null>(null);
-  const router                      = useRouter();
 
   // Boot the model manager once on mount
   useEffect(() => {
@@ -51,9 +66,10 @@ export function TranslatorClient() {
       if (!res.valid) {
         setError(`Invalid expression produced: ${res.errors.join(", ")}`);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (signal.aborted) return;
-      setError(e.message ?? "Could not parse schedule. Try rephrasing (e.g. \"every day at 9am\").");
+      const msg = e instanceof Error ? e.message : "Could not parse schedule. Try rephrasing (e.g. \"every day at 9am\").";
+      setError(msg);
       setResult(null);
     } finally {
       if (!signal.aborted) setTranslating(false);
@@ -174,7 +190,7 @@ export function TranslatorClient() {
 
         {/* Example chips */}
         <div className="fade-up delay-3" style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginBottom:"2rem" }}>
-          {EXAMPLE_SCHEDULES.slice(0, 10).map(ex => (
+          {EXTENDED_EXAMPLES.slice(0, 14).map(ex => (
             <button
               key={ex}
               onClick={() => modelReady && setInput(ex)}
@@ -219,6 +235,27 @@ export function TranslatorClient() {
               }}>
                 {result.description}
               </p>
+
+              {/* Warnings */}
+              {result.warnings?.length > 0 && (
+                <div style={{
+                  marginBottom:"1.5rem",
+                  display:"flex", flexDirection:"column", gap:"6px"
+                }}>
+                  {result.warnings.map((w, i) => (
+                    <div key={i} style={{
+                      padding:"10px 14px", borderRadius:"8px", fontSize:"12px",
+                      fontFamily:"var(--sans)", lineHeight:1.6,
+                      background:"var(--amber-bg)",
+                      border:"1px solid rgba(232,168,48,0.25)",
+                      color:"var(--text2)"
+                    }}>
+                      <span style={{ color:"var(--amber)", marginRight:"6px" }}>⚠</span>
+                      {w}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Actions */}
               <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
